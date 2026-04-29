@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BankNER — Banking NER Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10; --bg2: #0f1218; --bg3: #151a22; --bg4: #1c2330;
+    --border: #1e2a3a; --border2: #253344;
+    --text: #e2e8f0; --text2: #8fa3b8; --text3: #506070;
+    --accent: #00d4ff; --accent2: #0099cc; --accent3: #004466;
+    --green: #00e676; --red: #ff4757; --orange: #ffa726; --yellow: #ffe57f; --purple: #b388ff;
+    --mono: 'DM Mono', monospace; --sans: 'Syne', sans-serif;
+    --radius: 6px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; overflow: hidden; }
+
+  .app {
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    grid-template-columns: 260px 1fr 320px;
+    grid-template-areas: "header header header" "sidebar editor panel";
+    height: 100vh;
+  }
+
+  /* Header */
+  header {
+    grid-area: header; background: var(--bg2); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 16px; z-index: 10;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo-icon { width: 28px; height: 28px; background: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #000; font-weight: 800; }
+  .logo span { color: var(--accent); }
+  .hbadge { font-family: var(--mono); font-size: 11px; color: var(--text3); padding: 3px 8px; border: 1px solid var(--border); border-radius: 100px; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .ws-status { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--text3); }
+  .ws-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); transition: background 0.3s; }
+  .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .ws-dot.connecting { background: var(--orange); animation: pulse 1s infinite; }
+  .ws-dot.error { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+  .btn { font-family: var(--sans); font-size: 12px; font-weight: 600; padding: 7px 14px; border: none; border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: #33ddff; transform: translateY(-1px); }
+  .btn-primary:disabled { background: var(--border2); color: var(--text3); cursor: not-allowed; transform: none; }
+  .btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+  .btn-ghost:hover { border-color: var(--accent2); color: var(--accent); }
+
+  /* Sidebar */
+  .sidebar { grid-area: sidebar; background: var(--bg2); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+  .sidebar-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-label { font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px; color: var(--text3); text-transform: uppercase; margin-bottom: 10px; }
+  .sample-btn { display: block; width: 100%; text-align: left; background: transparent; border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px; margin-bottom: 5px; cursor: pointer; transition: all 0.15s; font-family: var(--sans); }
+  .sample-btn:hover { border-color: var(--accent2); background: var(--accent3); }
+  .sample-btn.active { border-color: var(--accent); background: rgba(0,212,255,0.08); }
+  .sample-btn-title { font-size: 12px; font-weight: 600; color: var(--text); display: block; margin-bottom: 2px; }
+  .sample-btn-type { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+  .entity-legend { padding: 14px 16px; overflow-y: auto; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; transition: opacity 0.2s; }
+  .legend-item.filtered { opacity: 0.3; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .legend-name { font-family: var(--mono); font-size: 10px; color: var(--text2); flex: 1; }
+  .legend-count { font-family: var(--mono); font-size: 10px; color: var(--text3); background: var(--bg3); padding: 1px 6px; border-radius: 10px; min-width: 20px; text-align: center; }
+  .legend-count.has-count { background: var(--bg4); color: var(--accent); }
+
+  /* Editor */
+  .editor-area { grid-area: editor; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+  .editor-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg2); flex-wrap: wrap; }
+  .doc-type-select { font-family: var(--mono); font-size: 11px; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); padding: 5px 10px; border-radius: var(--radius); cursor: pointer; }
+  .char-count { font-family: var(--mono); font-size: 11px; color: var(--text3); margin-left: auto; }
+  .processing-bar { height: 2px; background: var(--border); position: relative; overflow: hidden; flex-shrink: 0; }
+  .processing-bar-fill { position: absolute; left: -100%; top: 0; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+  .processing-bar-fill.active { animation: slide 1s ease-in-out infinite; }
+  @keyframes slide { from{left:-100%} to{left:100%} }
+
+  /* Input method tabs */
+  .input-method-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg2); }
+  .imt { padding: 9px 16px; font-size: 12px; font-weight: 600; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .imt.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .imt:hover:not(.active) { color: var(--text2); }
+  .imt-icon { font-size: 13px; }
+
+  /* Panes */
+  .editor-pane { flex: 1; overflow: hidden; display: none; flex-direction: column; }
+  .editor-pane.active { display: flex; }
+
+  /* Text paste pane */
+  .text-input { flex: 1; width: 100%; background: var(--bg); color: var(--text); border: none; outline: none; resize: none; font-family: var(--mono); font-size: 13px; line-height: 1.7; padding: 20px; caret-color: var(--accent); }
+  .text-input::placeholder { color: var(--text3); }
+
+  /* Upload pane */
+  .upload-pane-inner { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; gap: 24px; }
+  .dropzone {
+    width: 100%; max-width: 500px; border: 2px dashed var(--border2); border-radius: 12px;
+    padding: 48px 32px; text-align: center; cursor: pointer; transition: all 0.2s;
+    background: var(--bg2);
+  }
+  .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: rgba(0,212,255,0.05); }
+  .dropzone-icon { font-size: 40px; margin-bottom: 16px; opacity: 0.6; }
+  .dropzone-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+  .dropzone-sub { font-family: var(--mono); font-size: 11px; color: var(--text3); line-height: 1.8; }
+  .dropzone-formats { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+  .format-badge { font-family: var(--mono); font-size: 10px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border2); color: var(--text2); }
+  .format-badge.ocr { border-color: var(--orange); color: var(--orange); }
+  #fileInput { display: none; }
+  .upload-status { width: 100%; max-width: 500px; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; display: none; }
+  .upload-status.visible { display: block; }
+  .upload-status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .upload-file-icon { font-size: 20px; }
+  .upload-file-name { font-family: var(--mono); font-size: 12px; color: var(--text); font-weight: 600; }
+  .upload-file-meta { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+  .upload-ocr-badge { display: inline-block; font-family: var(--mono); font-size: 9px; padding: 2px 7px; border-radius: 3px; background: rgba(255,167,38,0.15); color: var(--orange); border: 1px solid var(--orange); margin-top: 4px; }
+  .upload-warning { font-family: var(--mono); font-size: 10px; color: var(--orange); margin-top: 6px; }
+
+  /* URL / Source pane */
+  .url-pane-inner { flex: 1; padding: 28px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+  .url-pane-inner h3 { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .url-input-row { display: flex; gap: 8px; }
+  .url-input { flex: 1; font-family: var(--mono); font-size: 12px; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); padding: 9px 12px; border-radius: var(--radius); outline: none; transition: border-color 0.15s; }
+  .url-input:focus { border-color: var(--accent2); }
+  .url-input::placeholder { color: var(--text3); }
+  .source-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .source-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; cursor: pointer; transition: all 0.15s; }
+  .source-card:hover { border-color: var(--accent2); background: var(--bg3); }
+  .source-card-icon { font-size: 22px; margin-bottom: 8px; }
+  .source-card-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+  .source-card-sub { font-family: var(--mono); font-size: 10px; color: var(--text3); line-height: 1.5; }
+  .source-divider { display: flex; align-items: center; gap: 10px; }
+  .source-divider-line { flex: 1; height: 1px; background: var(--border); }
+  .source-divider-text { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+  .url-hint { font-family: var(--mono); font-size: 10px; color: var(--text3); line-height: 1.8; padding: 10px 12px; background: var(--bg3); border-radius: var(--radius); border-left: 3px solid var(--accent3); }
+
+  /* Highlighted output pane */
+  .highlight-output { flex: 1; overflow-y: auto; padding: 20px; font-family: var(--mono); font-size: 13px; line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
+  .ent-highlight { border-radius: 3px; padding: 1px 4px; cursor: pointer; transition: filter 0.15s; font-weight: 500; border-bottom: 2px solid; }
+  .ent-highlight:hover { filter: brightness(1.3); }
+  .ent-highlight.filtered { opacity: 0.15; filter: grayscale(1); }
+
+  /* Tooltip */
+  .tooltip { display: none; position: fixed; z-index: 1000; background: var(--bg4); border: 1px solid var(--border2); border-radius: 6px; padding: 10px 14px; min-width: 200px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); pointer-events: none; }
+  .tooltip.visible { display: block; }
+  .tooltip-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; }
+  .tooltip-text { font-size: 12px; color: var(--text); margin-bottom: 6px; font-family: var(--mono); }
+  .tooltip-desc { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+  .tooltip-row { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); }
+  .tooltip-masked { font-family: var(--mono); font-size: 11px; color: var(--orange); letter-spacing: 1px; }
+
+  /* Right Panel */
+  .right-panel { grid-area: panel; background: var(--bg2); border-left: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+  .panel-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .panel-title { font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px; color: var(--text3); text-transform: uppercase; margin-bottom: 10px; }
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+  .stat-value { font-size: 22px; font-weight: 800; color: var(--text); line-height: 1; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .stat-label { font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.5px; text-transform: uppercase; }
+  .stat-card.highlight .stat-value { color: var(--accent); }
+  .stat-card.risk-low .stat-value { color: var(--green); }
+  .stat-card.risk-med .stat-value { color: var(--orange); }
+  .stat-card.risk-high .stat-value { color: var(--red); }
+  .risk-meter { width: 100%; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .risk-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; width: 0%; }
+  .entity-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px; cursor: pointer; transition: all 0.15s; border-left: 3px solid; margin-bottom: 5px; }
+  .entity-card:hover { background: var(--bg4); }
+  .entity-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .entity-card-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.8px; font-weight: 600; text-transform: uppercase; }
+  .entity-card-conf { font-family: var(--mono); font-size: 9px; color: var(--text3); }
+  .entity-card-text { font-family: var(--mono); font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .entity-card-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+  .sensitivity-badge { font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+  .sensitivity-CRITICAL { background: rgba(255,71,87,0.2); color: var(--red); }
+  .sensitivity-HIGH { background: rgba(255,167,38,0.2); color: var(--orange); }
+  .sensitivity-MEDIUM { background: rgba(179,136,255,0.2); color: var(--purple); }
+  .sensitivity-LOW { background: rgba(0,230,118,0.15); color: var(--green); }
+  .log-container { padding: 10px 12px; overflow-y: auto; max-height: 160px; }
+  .log-entry { font-family: var(--mono); font-size: 10px; color: var(--text3); padding: 2px 0 2px 8px; border-left: 2px solid var(--border); margin-bottom: 3px; animation: fadeIn 0.2s ease; }
+  .log-entry.found { border-color: var(--accent2); color: var(--text2); }
+  .log-entry.complete { border-color: var(--green); color: var(--green); }
+  .log-entry.error { border-color: var(--red); color: var(--red); }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-2px)} to{opacity:1;transform:none} }
+  .empty-state { text-align: center; padding: 32px 16px; color: var(--text3); }
+  .empty-icon { font-size: 28px; margin-bottom: 10px; opacity: 0.5; }
+  .empty-title { font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+  .empty-sub { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+  .action-bar { display: flex; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); background: var(--bg2); }
+  .btn-sm { font-size: 10px; padding: 5px 10px; font-family: var(--mono); font-weight: 600; border: 1px solid var(--border2); border-radius: var(--radius); cursor: pointer; background: transparent; color: var(--text2); transition: all 0.15s; }
+  .btn-sm:hover { border-color: var(--accent2); color: var(--accent); }
+  .sev-filter { display: flex; gap: 4px; flex-wrap: wrap; }
+  .sev-pill { font-family: var(--mono); font-size: 9px; padding: 3px 8px; border-radius: 100px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; font-weight: 600; }
+  .sev-pill.active { border-color: currentColor; }
+  .sev-pill.inactive { opacity: 0.3; }
+  .sev-CRITICAL { color: var(--red); } .sev-HIGH { color: var(--orange); } .sev-MEDIUM { color: var(--purple); } .sev-LOW { color: var(--green); }
+  .search-input { width: 100%; font-family: var(--mono); font-size: 11px; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); padding: 7px 10px; border-radius: var(--radius); outline: none; transition: border-color 0.15s; margin-bottom: 8px; }
+  .search-input:focus { border-color: var(--accent2); }
+  .search-input::placeholder { color: var(--text3); }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  @keyframes glowBorder { 0%{box-shadow:0 0 0 rgba(0,212,255,0)} 50%{box-shadow:0 0 20px rgba(0,212,255,0.3)} 100%{box-shadow:0 0 0 rgba(0,212,255,0)} }
+  .glow-once { animation: glowBorder 1.5s ease; }
+  .ingestion-banner { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 8px 12px; margin: 10px 16px 0; font-family: var(--mono); font-size: 10px; color: var(--text2); display: none; }
+  .ingestion-banner.visible { display: flex; align-items: center; gap: 8px; }
+  .ingestion-banner.ocr { border-color: var(--orange); color: var(--orange); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo"><div class="logo-icon">N</div>Bank<span>NER</span></div>
+    <span class="hbadge">v1.1 · Production</span>
+    <span class="hbadge">Real-time NER · Banking &amp; Insurance</span>
+    <div class="header-right">
+      <div class="ws-status"><div class="ws-dot" id="wsDot"></div><span id="wsLabel">Connecting...</span></div>
+      <button class="btn btn-primary" id="analyzeBtn" onclick="analyze()" disabled>▶ Analyze</button>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Sample Documents</div>
+      <button class="sample-btn" onclick="loadSample('wire_transfer', this)"><span class="sample-btn-title">Wire Transfer</span><span class="sample-btn-type">wire_transfer</span></button>
+      <button class="sample-btn" onclick="loadSample('insurance_claim', this)"><span class="sample-btn-title">Insurance Claim</span><span class="sample-btn-type">insurance_claim</span></button>
+      <button class="sample-btn" onclick="loadSample('loan_agreement', this)"><span class="sample-btn-title">Mortgage Agreement</span><span class="sample-btn-type">loan</span></button>
+      <button class="sample-btn" onclick="loadSample('kyc_doc', this)"><span class="sample-btn-title">KYC Verification</span><span class="sample-btn-type">kyc</span></button>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Entity Legend</div>
+      <div class="sidebar-label" style="margin-bottom:6px;margin-top:-6px;font-size:9px;opacity:0.7;">Click to filter</div>
+      <div id="entityLegend"></div>
+    </div>
+  </aside>
+
+  <!-- Editor -->
+  <main class="editor-area">
+    <div class="editor-toolbar">
+      <select class="doc-type-select" id="docTypeSelect">
+        <option value="generic">Generic</option>
+        <option value="wire_transfer">Wire Transfer</option>
+        <option value="insurance_claim">Insurance Claim</option>
+        <option value="loan">Loan / Mortgage</option>
+        <option value="kyc">KYC Document</option>
+        <option value="trade_confirmation">Trade Confirmation</option>
+      </select>
+      <span class="char-count" id="charCount">0 chars</span>
+    </div>
+
+    <div id="ingestionBanner" class="ingestion-banner"></div>
+    <div class="processing-bar"><div class="processing-bar-fill" id="processingBar"></div></div>
+
+    <!-- Input method tabs -->
+    <div class="input-method-tabs">
+      <div class="imt active" onclick="switchInputMethod('paste')" id="imt-paste"><span class="imt-icon">✏️</span> Paste Text</div>
+      <div class="imt" onclick="switchInputMethod('upload')" id="imt-upload"><span class="imt-icon">📎</span> Upload File</div>
+      <div class="imt" onclick="switchInputMethod('source')" id="imt-source"><span class="imt-icon">🔗</span> Link / URL</div>
+      <div class="imt" onclick="switchInputMethod('output')" id="imt-output"><span class="imt-icon">◈</span> Highlighted Output</div>
+    </div>
+
+    <!-- Paste pane -->
+    <div class="editor-pane active" id="pane-paste">
+      <textarea class="text-input" id="textInput"
+        placeholder="Paste a banking or insurance document here, or load a sample from the sidebar…&#10;&#10;Supports: Wire transfers, KYC forms, loan agreements, insurance claims, trade confirmations."
+        oninput="onTextInput()" spellcheck="false"></textarea>
+    </div>
+
+    <!-- Upload pane -->
+    <div class="editor-pane" id="pane-upload">
+      <div class="upload-pane-inner">
+        <div class="dropzone" id="dropzone"
+          onclick="document.getElementById('fileInput').click()"
+          ondragover="handleDragOver(event)"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event)">
+          <div class="dropzone-icon">📄</div>
+          <div class="dropzone-title">Drop your document here</div>
+          <div class="dropzone-sub">or click to browse files</div>
+          <div class="dropzone-formats">
+            <span class="format-badge">PDF</span>
+            <span class="format-badge ocr">📷 Scanned PDF</span>
+            <span class="format-badge ocr">PNG / JPG</span>
+            <span class="format-badge ocr">TIFF</span>
+            <span class="format-badge">DOCX</span>
+            <span class="format-badge">TXT</span>
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.docx,.txt,.csv"
+          onchange="handleFileSelect(event)">
+
+        <div class="upload-status" id="uploadStatus">
+          <div class="upload-status-row">
+            <span class="upload-file-icon" id="uploadIcon">📄</span>
+            <div>
+              <div class="upload-file-name" id="uploadFileName">—</div>
+              <div class="upload-file-meta" id="uploadFileMeta">—</div>
+            </div>
+          </div>
+          <div id="uploadOcrBadge" style="display:none"><span class="upload-ocr-badge">📷 OCR will be used</span></div>
+          <div class="upload-warning" id="uploadWarning"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- URL / Source pane -->
+    <div class="editor-pane" id="pane-source">
+      <div class="url-pane-inner">
+        <div>
+          <h3>Fetch from URL</h3>
+          <p style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-top:4px;margin-bottom:12px;">Paste a direct link to a PDF, DOCX, or text file</p>
+          <div class="url-input-row">
+            <input class="url-input" id="urlInput" type="url" placeholder="https://example.com/document.pdf"
+              onkeydown="if(event.key==='Enter') fetchURL()">
+            <button class="btn btn-primary" onclick="fetchURL()" style="white-space:nowrap">Fetch</button>
+          </div>
+          <div class="url-hint" style="margin-top:10px">
+            Paste a public URL → BankNER fetches &amp; extracts text automatically<br>
+            Works with: <strong>PDF</strong>, <strong>DOCX</strong>, <strong>TXT</strong>, scanned image PDFs
+          </div>
+        </div>
+
+        <div class="source-divider">
+          <div class="source-divider-line"></div>
+          <div class="source-divider-text">OR CONNECT A SOURCE</div>
+          <div class="source-divider-line"></div>
+        </div>
+
+        <div>
+          <div class="sidebar-label" style="margin-bottom:10px">Cloud Sources</div>
+          <div class="source-cards">
+            <div class="source-card" onclick="promptCloudSource('gdrive')">
+              <div class="source-card-icon">📁</div>
+              <div class="source-card-title">Google Drive</div>
+              <div class="source-card-sub">Paste a shared Drive or Docs link<br>Public files only</div>
+            </div>
+            <div class="source-card" onclick="promptCloudSource('dropbox')">
+              <div class="source-card-icon">📦</div>
+              <div class="source-card-title">Dropbox</div>
+              <div class="source-card-sub">Paste a shared Dropbox link<br>dl=0 links auto-converted</div>
+            </div>
+            <div class="source-card" onclick="promptCloudSource('url')">
+              <div class="source-card-icon">🌐</div>
+              <div class="source-card-title">Public URL</div>
+              <div class="source-card-sub">Any public HTTP/HTTPS link<br>PDF, DOCX, TXT</div>
+            </div>
+            <div class="source-card" style="opacity:0.45;cursor:default">
+              <div class="source-card-icon">🔒</div>
+              <div class="source-card-title">SharePoint / OneDrive</div>
+              <div class="source-card-sub">Coming soon<br>Requires OAuth setup</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Highlighted output pane -->
+    <div class="editor-pane" id="pane-output">
+      <div class="highlight-output" id="highlightOutput">
+        <div class="empty-state"><div class="empty-icon">◈</div><div class="empty-title">No results yet</div><div class="empty-sub">Run analysis to see highlighted entities</div></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Right Panel -->
+  <aside class="right-panel">
+    <div class="panel-section">
+      <div class="panel-title">Analysis Results</div>
+      <div class="stats-grid">
+        <div class="stat-card highlight"><div class="stat-value" id="statEntities">—</div><div class="stat-label">Entities Found</div></div>
+        <div class="stat-card"><div class="stat-value" id="statTime">—</div><div class="stat-label">Process Time</div></div>
+        <div class="stat-card" id="riskCard">
+          <div class="stat-value" id="statRisk">—</div>
+          <div class="stat-label">Risk Score / 10</div>
+          <div class="risk-meter"><div class="risk-fill" id="riskFill"></div></div>
+        </div>
+        <div class="stat-card"><div class="stat-value" id="statTypes">—</div><div class="stat-label">Entity Types</div></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Filter by Sensitivity</div>
+      <div class="sev-filter">
+        <span class="sev-pill sev-CRITICAL active" data-sev="CRITICAL" onclick="toggleSev('CRITICAL')">CRITICAL</span>
+        <span class="sev-pill sev-HIGH active" data-sev="HIGH" onclick="toggleSev('HIGH')">HIGH</span>
+        <span class="sev-pill sev-MEDIUM active" data-sev="MEDIUM" onclick="toggleSev('MEDIUM')">MEDIUM</span>
+        <span class="sev-pill sev-LOW active" data-sev="LOW" onclick="toggleSev('LOW')">LOW</span>
+      </div>
+    </div>
+
+    <div class="panel-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+      <div class="panel-title">Detected Entities</div>
+      <input class="search-input" id="entitySearch" placeholder="Search entities..." oninput="renderEntityList()">
+      <div style="flex:1;overflow-y:auto;" id="entityListContainer">
+        <div class="empty-state"><div class="empty-icon">◻</div><div class="empty-title">No entities</div><div class="empty-sub">Run analysis first</div></div>
+      </div>
+    </div>
+
+    <div class="panel-section" style="padding:0;">
+      <div class="panel-title" style="padding:12px 16px 8px;">Processing Log</div>
+      <div class="log-container" id="logContainer"></div>
+    </div>
+
+    <div class="action-bar">
+      <button class="btn-sm" onclick="exportJSON()">Export JSON</button>
+      <button class="btn-sm" onclick="exportCSV()">Export CSV</button>
+      <button class="btn-sm" onclick="clearAll()" style="margin-left:auto;">Clear</button>
+    </div>
+  </aside>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let ws = null;
+let entities = [];
+let filteredTypes = new Set();
+let activeSevs = new Set(['CRITICAL','HIGH','MEDIUM','LOW']);
+let currentText = '';
+let pendingFile = null;
+let pendingURL = null;
+let currentInputMethod = 'paste'; // paste | upload | source | output
+
+const ENTITY_TYPES = [
+  {label:'ACCOUNT_NUMBER',color:'#FF6B6B'},{label:'SWIFT_BIC',color:'#4ECDC4'},
+  {label:'IBAN',color:'#45B7D1'},{label:'PAN',color:'#96CEB4'},
+  {label:'SSN',color:'#FFEAA7'},{label:'POLICY_ID',color:'#DDA0DD'},
+  {label:'CLAIM_NUMBER',color:'#F0A500'},{label:'CURRENCY_AMOUNT',color:'#6BCB77'},
+  {label:'ROUTING_NUMBER',color:'#FF8C94'},{label:'CREDIT_CARD',color:'#FF6348'},
+  {label:'PERSON',color:'#A8E6CF'},{label:'ORG',color:'#FFD3B6'},
+  {label:'DATE',color:'#C3B1E1'},{label:'LOAN_ID',color:'#B5EAD7'},
+  {label:'TAX_ID',color:'#FFDAC1'},{label:'EMAIL',color:'#E2F0CB'},
+  {label:'PHONE',color:'#BDE0FE'},{label:'ADDRESS',color:'#FFC8DD'},
+];
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connectWS() {
+  updateWS('connecting');
+  try { ws = new WebSocket('ws://localhost:8000/ws/process'); } catch(e) { updateWS('error'); return; }
+  ws.onopen = () => { updateWS('connected'); document.getElementById('analyzeBtn').disabled = false; log('Connected to BankNER server','complete'); };
+  ws.onmessage = ({data}) => handleMsg(JSON.parse(data));
+  ws.onclose = () => { updateWS('error'); document.getElementById('analyzeBtn').disabled = true; setTimeout(connectWS, 3000); };
+  ws.onerror = () => updateWS('error');
+}
+
+function updateWS(s) {
+  document.getElementById('wsDot').className = 'ws-dot ' + s;
+  document.getElementById('wsLabel').textContent = {connected:'Live',connecting:'Connecting...',error:'Disconnected'}[s]||s;
+}
+
+function handleMsg(msg) {
+  switch(msg.action) {
+    case 'processing_start':
+      entities = []; renderEntityList(); resetLegendCounts();
+      setProcessing(true);
+      log(`Processing ${msg.char_count} chars [${msg.document_type}]`);
+      break;
+    case 'entity_found':
+      entities.push(msg.entity);
+      updateLegendCount(msg.entity.label);
+      log(`Found: ${msg.entity.label} — "${msg.entity.text.substring(0,28)}"`, 'found');
+      renderEntityList();
+      break;
+    case 'processing_complete':
+      setProcessing(false);
+      updateStats(msg);
+      renderHighlightedOutput();
+      switchInputMethod('output');
+      log(`Done: ${msg.total_entities} entities in ${msg.processing_time_ms}ms`, 'complete');
+      document.querySelector('.editor-area').classList.add('glow-once');
+      setTimeout(() => document.querySelector('.editor-area').classList.remove('glow-once'), 1500);
+      break;
+    case 'sample_loaded':
+      document.getElementById('textInput').value = msg.text;
+      document.getElementById('docTypeSelect').value = msg.document_type;
+      onTextInput();
+      switchInputMethod('paste');
+      log(`Loaded: ${msg.title}`);
+      break;
+    case 'error':
+      log('Error: ' + msg.message, 'error'); setProcessing(false); break;
+  }
+}
+
+// ── Analyze dispatcher ─────────────────────────────────────────────────────
+async function analyze() {
+  const docType = document.getElementById('docTypeSelect').value;
+
+  if (currentInputMethod === 'upload' && pendingFile) {
+    await analyzeFile(docType);
+  } else if (currentInputMethod === 'source' && pendingURL) {
+    await analyzeURL(docType);
+  } else {
+    // Text paste (default)
+    const text = document.getElementById('textInput').value.trim();
+    if (!text) return;
+    currentText = document.getElementById('textInput').value;
+    hideBanner();
+    entities = []; renderEntityList(); resetLegendCounts();
+    document.getElementById('highlightOutput').innerHTML = '<div class="empty-state"><div class="empty-icon">◈</div><div class="empty-title">Analyzing...</div></div>';
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({action:'process', text: currentText, document_type: docType}));
+    }
+  }
+}
+
+async function analyzeFile(docType) {
+  if (!pendingFile) return;
+  setProcessing(true);
+  entities = []; renderEntityList(); resetLegendCounts();
+  hideBanner();
+  log(`Uploading: ${pendingFile.name}`);
+
+  const fd = new FormData();
+  fd.append('file', pendingFile);
+  fd.append('document_type', docType);
+
+  try {
+    const resp = await fetch('http://localhost:8000/api/ingest/upload', {method:'POST', body: fd});
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || 'Upload failed');
+    }
+    const data = await resp.json();
+    currentText = data.text;
+    entities = data.entities;
+
+    // Show ingestion info
+    const ing = data.ingestion;
+    showBanner(ing);
+
+    updateLegendFromEntities();
+    updateStats({
+      total_entities: entities.length,
+      processing_time_ms: data.processing_time_ms,
+      entity_counts: data.entity_counts,
+      risk_score: data.risk_score,
+    });
+    renderHighlightedOutput();
+    renderEntityList();
+    switchInputMethod('output');
+    log(`Extracted ${ing.char_count} chars from ${ing.filename} (${ing.page_count} page(s))${ing.ocr_used?' via OCR':''}`, 'complete');
+  } catch(e) {
+    log('Error: ' + e.message, 'error');
+  }
+  setProcessing(false);
+}
+
+async function analyzeURL(docType) {
+  if (!pendingURL) return;
+  setProcessing(true);
+  entities = []; renderEntityList(); resetLegendCounts();
+  hideBanner();
+  log(`Fetching: ${pendingURL}`);
+
+  try {
+    const resp = await fetch('http://localhost:8000/api/ingest/url', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url: pendingURL, document_type: docType})
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || 'Fetch failed');
+    }
+    const data = await resp.json();
+    currentText = data.text;
+    entities = data.entities;
+    showBanner(data.ingestion);
+    updateLegendFromEntities();
+    updateStats({total_entities: entities.length, processing_time_ms: data.processing_time_ms, entity_counts: data.entity_counts, risk_score: data.risk_score});
+    renderHighlightedOutput();
+    renderEntityList();
+    switchInputMethod('output');
+    log(`Fetched ${data.ingestion.char_count} chars from ${data.ingestion.source}`, 'complete');
+  } catch(e) {
+    log('Error: ' + e.message, 'error');
+  }
+  setProcessing(false);
+}
+
+// ── File handling ──────────────────────────────────────────────────────────
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) setFile(file);
+}
+function handleDragOver(e) { e.preventDefault(); document.getElementById('dropzone').classList.add('dragover'); }
+function handleDragLeave(e) { document.getElementById('dropzone').classList.remove('dragover'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) setFile(file);
+}
+function setFile(file) {
+  pendingFile = file;
+  pendingURL = null;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const isOCR = ['png','jpg','jpeg','tiff','tif'].includes(ext);
+  const icons = {pdf:'📄',png:'🖼',jpg:'🖼',jpeg:'🖼',tiff:'🖼',tif:'🖼',docx:'📝',txt:'📋',csv:'📊'};
+  document.getElementById('uploadIcon').textContent = icons[ext] || '📄';
+  document.getElementById('uploadFileName').textContent = file.name;
+  document.getElementById('uploadFileMeta').textContent = formatBytes(file.size) + ' · ' + ext.toUpperCase();
+  document.getElementById('uploadOcrBadge').style.display = isOCR ? 'block' : 'none';
+  document.getElementById('uploadStatus').classList.add('visible');
+  document.getElementById('analyzeBtn').disabled = false;
+  document.getElementById('charCount').textContent = file.name;
+  log(`File selected: ${file.name} (${formatBytes(file.size)})`);
+}
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+
+// ── URL handling ───────────────────────────────────────────────────────────
+function fetchURL() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) return;
+  pendingURL = url;
+  pendingFile = null;
+  document.getElementById('charCount').textContent = url.length > 40 ? url.substring(0,40)+'…' : url;
+  document.getElementById('analyzeBtn').disabled = false;
+  log(`URL queued: ${url}`);
+}
+
+function promptCloudSource(type) {
+  const prompts = {
+    gdrive: 'Paste your Google Drive or Google Docs share link:',
+    dropbox: 'Paste your Dropbox share link:',
+    url: 'Paste any public URL to a PDF, DOCX, or text file:',
+  };
+  const url = window.prompt(prompts[type] || 'Paste URL:');
+  if (url && url.trim()) {
+    document.getElementById('urlInput').value = url.trim();
+    fetchURL();
+  }
+}
+
+// ── UI ─────────────────────────────────────────────────────────────────────
+function switchInputMethod(method) {
+  currentInputMethod = method;
+  document.querySelectorAll('.imt').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.editor-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('imt-' + method).classList.add('active');
+  document.getElementById('pane-' + method).classList.add('active');
+
+  // If switching back to paste, re-enable analyze if there's text
+  if (method === 'paste') {
+    const hasText = document.getElementById('textInput').value.trim().length > 0;
+    document.getElementById('analyzeBtn').disabled = !hasText || ws?.readyState !== WebSocket.OPEN;
+  }
+}
+
+function loadSample(key, btn) {
+  document.querySelectorAll('.sample-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  switchInputMethod('paste');
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({action:'load_sample', key}));
+  }
+}
+
+function onTextInput() {
+  const len = document.getElementById('textInput').value.length;
+  document.getElementById('charCount').textContent = len.toLocaleString() + ' chars';
+  pendingFile = null; pendingURL = null;
+}
+
+function setProcessing(active) {
+  document.getElementById('processingBar').classList.toggle('active', active);
+  document.getElementById('analyzeBtn').disabled = active;
+  document.getElementById('analyzeBtn').textContent = active ? '◌ Analyzing...' : '▶ Analyze';
+}
+
+function showBanner(ing) {
+  const b = document.getElementById('ingestionBanner');
+  const isOCR = ing.ocr_used;
+  b.className = 'ingestion-banner visible' + (isOCR ? ' ocr' : '');
+  b.innerHTML = `${isOCR ? '📷' : '📄'} <strong>${ing.filename}</strong> &nbsp;·&nbsp; ${ing.page_count} page(s) &nbsp;·&nbsp; ${ing.char_count.toLocaleString()} chars extracted${isOCR ? ' &nbsp;·&nbsp; <strong>OCR used</strong>' : ''}${ing.warning ? ' &nbsp;·&nbsp; ⚠ ' + ing.warning : ''}`;
+}
+
+function hideBanner() {
+  document.getElementById('ingestionBanner').className = 'ingestion-banner';
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function renderHighlightedOutput() {
+  const container = document.getElementById('highlightOutput');
+  if (!entities.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">◻</div><div class="empty-title">No entities found</div></div>'; return; }
+  const sorted = [...entities].sort((a,b) => a.start - b.start);
+  let html = '', cursor = 0;
+  for (const e of sorted) {
+    if (e.start < cursor) continue;
+    html += escH(currentText.slice(cursor, e.start));
+    const filt = filteredTypes.has(e.label) || !activeSevs.has(e.sensitivity);
+    const bg = e.color + '28';
+    html += `<span class="ent-highlight ${filt?'filtered':''}"
+      style="background:${bg};border-bottom-color:${e.color};color:${e.color};"
+      data-label="${e.label}" data-text="${escA(e.text)}" data-confidence="${e.confidence}"
+      data-sensitivity="${e.sensitivity}" data-desc="${escA(e.description)}" data-masked="${escA(e.masked)}"
+      onmouseenter="showTT(event,this)" onmouseleave="hideTT()"
+    >${escH(e.text)}</span>`;
+    cursor = e.end;
+  }
+  html += escH(currentText.slice(cursor));
+  container.innerHTML = html;
+}
+
+function renderEntityList() {
+  const container = document.getElementById('entityListContainer');
+  const q = document.getElementById('entitySearch').value.toLowerCase();
+  const filtered = entities.filter(e =>
+    (!q || e.text.toLowerCase().includes(q) || e.label.toLowerCase().includes(q)) &&
+    activeSevs.has(e.sensitivity) && !filteredTypes.has(e.label)
+  );
+  if (!filtered.length) { container.innerHTML = '<div class="empty-state" style="padding:20px 14px"><div class="empty-title">No matches</div></div>'; return; }
+  container.innerHTML = filtered.map(e => `
+    <div class="entity-card" style="border-left-color:${e.color}">
+      <div class="entity-card-header">
+        <span class="entity-card-label" style="color:${e.color}">${e.label}</span>
+        <span class="entity-card-conf">${Math.round(e.confidence*100)}%</span>
+      </div>
+      <div class="entity-card-text">${escH(e.text)}</div>
+      <div class="entity-card-meta">
+        <span class="sensitivity-badge sensitivity-${e.sensitivity}">${e.sensitivity}</span>
+        ${e.masked !== e.text ? `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${escH(e.masked)}</span>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function updateStats(msg) {
+  document.getElementById('statEntities').textContent = msg.total_entities;
+  document.getElementById('statTime').textContent = msg.processing_time_ms < 1000 ? msg.processing_time_ms.toFixed(1)+'ms' : (msg.processing_time_ms/1000).toFixed(2)+'s';
+  document.getElementById('statTypes').textContent = Object.keys(msg.entity_counts||{}).length;
+  const risk = msg.risk_score || 0;
+  document.getElementById('statRisk').textContent = risk.toFixed(1);
+  document.getElementById('riskFill').style.width = (risk*10)+'%';
+  document.getElementById('riskFill').style.background = risk>7?'#ff4757':risk>4?'#ffa726':'#00e676';
+  document.getElementById('riskCard').className = 'stat-card '+(risk>7?'risk-high':risk>4?'risk-med':'risk-low');
+}
+
+// ── Legend ─────────────────────────────────────────────────────────────────
+function renderLegend() {
+  document.getElementById('entityLegend').innerHTML = ENTITY_TYPES.map(t => `
+    <div class="legend-item ${filteredTypes.has(t.label)?'filtered':''}" onclick="toggleType('${t.label}')" id="leg-${t.label}">
+      <div class="legend-dot" style="background:${t.color}"></div>
+      <span class="legend-name">${t.label}</span>
+      <span class="legend-count" id="lc-${t.label}">0</span>
+    </div>`).join('');
+}
+
+function updateLegendCount(label) {
+  const el = document.getElementById('lc-'+label);
+  if (el) { el.textContent = parseInt(el.textContent||0)+1; el.className='legend-count has-count'; }
+}
+
+function updateLegendFromEntities() {
+  resetLegendCounts();
+  entities.forEach(e => updateLegendCount(e.label));
+}
+
+function resetLegendCounts() {
+  ENTITY_TYPES.forEach(t => { const el=document.getElementById('lc-'+t.label); if(el){el.textContent='0';el.className='legend-count';} });
+}
+
+function toggleType(label) {
+  filteredTypes.has(label) ? filteredTypes.delete(label) : filteredTypes.add(label);
+  renderLegend();
+  updateLegendFromEntities();
+  renderHighlightedOutput(); renderEntityList();
+}
+
+function toggleSev(sev) {
+  const pill = document.querySelector(`[data-sev="${sev}"]`);
+  if (activeSevs.has(sev)) { activeSevs.delete(sev); pill.classList.remove('active'); pill.classList.add('inactive'); }
+  else { activeSevs.add(sev); pill.classList.add('active'); pill.classList.remove('inactive'); }
+  renderHighlightedOutput(); renderEntityList();
+}
+
+// ── Tooltip ────────────────────────────────────────────────────────────────
+function showTT(event, el) {
+  const tt = document.getElementById('tooltip');
+  const conf = Math.round(parseFloat(el.dataset.confidence)*100);
+  tt.innerHTML = `
+    <div class="tooltip-label" style="color:${el.style.color}">${el.dataset.label}</div>
+    <div class="tooltip-text">${el.dataset.text}</div>
+    ${el.dataset.masked!==el.dataset.text?`<div class="tooltip-masked">Masked: ${el.dataset.masked}</div>`:''}
+    <div class="tooltip-desc">${el.dataset.desc}</div>
+    <div class="tooltip-row"><span class="sensitivity-badge sensitivity-${el.dataset.sensitivity}">${el.dataset.sensitivity}</span><span>Conf: ${conf}%</span></div>`;
+  const r = el.getBoundingClientRect();
+  tt.style.left = Math.min(r.left, window.innerWidth-230)+'px';
+  tt.style.top = (r.bottom+8)+'px';
+  tt.classList.add('visible');
+}
+function hideTT() { document.getElementById('tooltip').classList.remove('visible'); }
+
+// ── Log ────────────────────────────────────────────────────────────────────
+function log(msg, type='') {
+  const c = document.getElementById('logContainer');
+  const d = document.createElement('div');
+  d.className = 'log-entry '+type;
+  const t = new Date().toLocaleTimeString('en-US',{hour12:false});
+  d.textContent = `[${t}] ${msg}`;
+  c.appendChild(d);
+  c.scrollTop = c.scrollHeight;
+  if (c.children.length > 100) c.removeChild(c.children[0]);
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────
+function exportJSON() {
+  if (!entities.length) return;
+  dl('bankner-export.json', JSON.stringify({timestamp:new Date().toISOString(), total_entities:entities.length, entities},null,2), 'application/json');
+}
+function exportCSV() {
+  if (!entities.length) return;
+  const h = ['label','text','masked','confidence','sensitivity','start','end'];
+  const rows = entities.map(e => h.map(k=>`"${String(e[k]||'').replace(/"/g,'""')}"`).join(','));
+  dl('bankner-export.csv', [h.join(','),...rows].join('\n'), 'text/csv');
+}
+function dl(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content],{type}));
+  a.download = name; a.click();
+}
+function clearAll() {
+  document.getElementById('textInput').value = '';
+  document.getElementById('urlInput').value = '';
+  document.getElementById('uploadStatus').classList.remove('visible');
+  document.getElementById('highlightOutput').innerHTML = '<div class="empty-state"><div class="empty-icon">◈</div><div class="empty-title">No results yet</div><div class="empty-sub">Run analysis to see highlighted entities</div></div>';
+  document.getElementById('entityListContainer').innerHTML = '<div class="empty-state"><div class="empty-icon">◻</div><div class="empty-title">No entities</div><div class="empty-sub">Run analysis first</div></div>';
+  entities = []; pendingFile = null; pendingURL = null;
+  resetLegendCounts(); hideBanner(); onTextInput(); switchInputMethod('paste');
+  ['statEntities','statTime','statRisk','statTypes'].forEach(id => document.getElementById(id).textContent='—');
+  document.getElementById('riskFill').style.width='0%';
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+function escH(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escA(s) { return (s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ── Init ───────────────────────────────────────────────────────────────────
+renderLegend();
+connectWS();
+document.addEventListener('keydown', e => { if ((e.ctrlKey||e.metaKey) && e.key==='Enter') analyze(); });
+</script>
+</body>
+</html>
